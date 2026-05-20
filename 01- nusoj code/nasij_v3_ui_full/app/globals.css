@@ -1,0 +1,10 @@
+
+@tailwind base; @tailwind components; @tailwind utilities;
+:root { --bg:#0b0f0e; --fg:#f5f7f6; }
+html[dir="rtl"] body { font-family: system-ui, 'Segoe UI', Tahoma, sans-serif; }
+body { background:#0b0f0e; color:#f5f7f6; }
+.leaflet-container { background:#0b0f0e; }
+a { color:#a7ffdf }
+.card { @apply bg-neutral-900/60 border border-neutral-800 rounded-xl p-4; }
+.btn { @apply inline-flex items-center gap-2 px-4 py-2 rounded-md bg-brand hover:bg-brand-dark transition; }
+.select, select { @apply bg-neutral-900 border border-neutral-700 rounded-md px-2 py-1; }

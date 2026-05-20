@@ -1,0 +1,13 @@
+
+services:
+  api:
+    build: ./services/api
+    ports: ["4000:4000"]
+    environment:
+      - PORT=4000
+      - VERIFY_JWT=${VERIFY_JWT}
+      - KEYCLOAK_ISSUER=${KEYCLOAK_ISSUER}
+      - KEYCLOAK_JWKS_URL=${KEYCLOAK_JWKS_URL}
+  etl:
+    build: ./services/etl
+    ports: ["5000:5000"]

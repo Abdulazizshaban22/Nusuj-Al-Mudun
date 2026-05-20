@@ -1,0 +1,27 @@
+
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: nasij-carto }
+spec:
+  replicas: 3
+  selector: { matchLabels: { app: nasij-carto } }
+  template:
+    metadata: { labels: { app: nasij-carto } }
+    spec:
+      containers:
+        - name: carto
+          image: nasij/carto:3.1
+          env:
+            - { name: MAPFISH_URL, value: "http://mapfish:8080/print" }
+          ports: [{ containerPort: 9105 }]
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata: { name: nasij-carto-hpa }
+spec:
+  scaleTargetRef: { apiVersion: apps/v1, kind: Deployment, name: nasij-carto }
+  minReplicas: 3
+  maxReplicas: 50
+  metrics:
+    - type: Resource
+      resource: { name: cpu, target: { type: Utilization, averageUtilization: 60 } }

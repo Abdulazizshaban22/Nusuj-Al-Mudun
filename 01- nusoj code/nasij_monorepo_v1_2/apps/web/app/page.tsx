@@ -1,0 +1,1 @@
+export default function P(){return <main style={{padding:24}}><a href='/map'>Map</a> · <a href='/access'>Access</a></main>}

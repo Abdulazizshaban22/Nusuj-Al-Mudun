@@ -1,0 +1,48 @@
+{
+  "stac_version": "1.0.0",
+  "type": "Feature",
+  "id": "ndvi-2025-10",
+  "geometry": {
+    "type": "Polygon",
+    "coordinates": [
+      [
+        [
+          35,
+          16
+        ],
+        [
+          55,
+          16
+        ],
+        [
+          55,
+          33
+        ],
+        [
+          35,
+          33
+        ],
+        [
+          35,
+          16
+        ]
+      ]
+    ]
+  },
+  "bbox": [
+    35,
+    16,
+    55,
+    33
+  ],
+  "properties": {
+    "datetime": "2025-10-01T00:00:00Z"
+  },
+  "collection": "urban-indicators",
+  "assets": {
+    "cog": {
+      "href": "s3://bucket/path/ndvi-2025-10.tif",
+      "type": "image/tiff; application=geotiff; profile=cloud-optimized"
+    }
+  }
+}

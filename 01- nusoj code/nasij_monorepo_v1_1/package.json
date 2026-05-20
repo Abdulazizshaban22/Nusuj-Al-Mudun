@@ -1,0 +1,14 @@
+{
+  "name": "nasij-monorepo",
+  "private": true,
+  "version": "1.1.0",
+  "workspaces": [
+    "apps/*",
+    "services/*",
+    "engines/*"
+  ],
+  "scripts": {
+    "build": "echo Build per app",
+    "dev": "echo Use docker compose for dev"
+  }
+}

@@ -1,0 +1,39 @@
+{
+  "annotations": {
+    "list": []
+  },
+  "panels": [
+    {
+      "type": "stat",
+      "title": "ETL Requests",
+      "targets": [
+        {
+          "expr": "sum(nasij_requests_total)"
+        }
+      ],
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 6,
+        "h": 4
+      }
+    },
+    {
+      "type": "graph",
+      "title": "ETL Latency",
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.9, sum(rate(nasij_req_seconds_bucket[5m])) by (le,endpoint))"
+        }
+      ],
+      "gridPos": {
+        "x": 0,
+        "y": 4,
+        "w": 24,
+        "h": 8
+      }
+    }
+  ],
+  "schemaVersion": 39,
+  "title": "NASIJ \u2014 Urban Ops"
+}

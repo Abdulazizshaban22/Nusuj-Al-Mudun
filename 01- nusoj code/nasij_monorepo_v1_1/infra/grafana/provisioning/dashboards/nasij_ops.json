@@ -1,0 +1,39 @@
+{
+  "uid": "nasij-ops",
+  "title": "NASIJ \u2014 ETL & Algorithms",
+  "timezone": "browser",
+  "schemaVersion": 38,
+  "version": 1,
+  "panels": [
+    {
+      "type": "stat",
+      "title": "Total Requests",
+      "gridPos": {
+        "h": 4,
+        "w": 8,
+        "x": 0,
+        "y": 0
+      },
+      "targets": [
+        {
+          "expr": "sum(nasij_requests_total)"
+        }
+      ]
+    },
+    {
+      "type": "graph",
+      "title": "Requests by Endpoint",
+      "gridPos": {
+        "h": 9,
+        "w": 24,
+        "x": 0,
+        "y": 4
+      },
+      "targets": [
+        {
+          "expr": "sum by (endpoint) (rate(nasij_requests_total[5m]))"
+        }
+      ]
+    }
+  ]
+}

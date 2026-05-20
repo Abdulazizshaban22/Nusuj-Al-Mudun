@@ -1,0 +1,8 @@
+
+{$CADDY_DOMAIN} {
+  encode gzip
+  reverse_proxy /api/* api:8088
+  reverse_proxy /etl/* etl:9101
+  reverse_proxy / { to web:3000 }
+  tls {$EMAIL_ACME}
+}

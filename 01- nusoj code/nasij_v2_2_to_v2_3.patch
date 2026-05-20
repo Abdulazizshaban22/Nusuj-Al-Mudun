@@ -1,0 +1,350 @@
+--- a/UPGRADE_v2_3.md
++++ b/UPGRADE_v2_3.md
+@@ -0,0 +1,19 @@
++
++# NASIJ v2.3 — Hot/Cold (Gi*), H3 Grid, 100-metric Picker, Grafana KPIs
++
++## What's new
++- ETL `/tools/gi_hotspots_geojson` (Gi* z-scores + classes) and `/tools/h3_aggregate` (H3 hex bins).
++- Dashboard updated to toggle Gi* and H3 layers + pick any metric from the 100-tool catalog.
++- Grafana provisioning: Postgres datasource + `fabric_city.json` dashboard.
++- Multi-city OSRM build script `scripts/osrm_batch.sh`.
++
++## How to run
++1) `docker compose up -d --build`
++2) Init DB (first time): `docker compose exec db psql -U $POSTGRES_USER -d $POSTGRES_DB -f /sql/schema.sql`
++3) Import your city layers to `urban_cells` (see README).
++4) Open `http://localhost:3000/dashboard` and toggle Gi*/H3.
++5) (Optional) Run `scripts/osrm_batch.sh` to bake OSRM for multiple cities.
++
++## Notes
++- Ensure ETL image installs `h3` (requirements.txt already updated).
++- Grafana will auto-pick the datasource and dashboards on first run.
+--- a/apps/web/app/(routes)/dashboard/page.tsx
++++ b/apps/web/app/(routes)/dashboard/page.tsx
+@@ -1,19 +1,48 @@
+ 
+ 'use client'
+ import { useEffect, useState } from 'react'
+-import { Chart, LineController, LineElement, PointElement, LinearScale, CategoryScale, BarElement, BarController } from 'chart.js'
+-Chart.register(LineController, LineElement, PointElement, LinearScale, CategoryScale, BarElement, BarController)
++import { MapContainer, TileLayer, GeoJSON } from 'react-leaflet'
++
++const etl = process.env.NEXT_PUBLIC_ETL_BASE || 'http://localhost:9101'
+ 
+ export default function Dashboard(){
+-  const [kpi,setKpi]=useState<any>({})
+-  const etl = process.env.NEXT_PUBLIC_ETL_BASE || 'http://localhost:9101'
+-  useEffect(()=>{ fetch(etl+'/kpi/summary').then(r=>r.json()).then(setKpi) },[])
++  const [catalog, setCatalog] = useState<string[]>([])
++  const [metric, setMetric] = useState('fabric_index')
++  const [fc, setFc] = useState<any>(null)
++  const [hot, setHot] = useState<any>(null)
++  const [hex, setHex] = useState<any>(null)
++  const [res, setRes] = useState(8)
++
++  useEffect(()=>{ fetch(etl+'/tools/catalog').then(r=>r.json()).then(j=>setCatalog(j.tools||[])) },[])
++  useEffect(()=>{ fetch(etl+'/tools/choropleth?metric='+metric).then(r=>r.json()).then(setFc); if(hot){ fetch(etl+'/tools/gi_hotspots_geojson?metric='+metric).then(r=>r.json()).then(setHot) }; if(hex){ fetch(etl+`/tools/h3_aggregate?res=${res}&metric=${metric}`).then(r=>r.json()).then(setHex)} },[metric])
++  useEffect(()=>{ if(hex){ fetch(etl+`/tools/h3_aggregate?res=${res}&metric=${metric}`).then(r=>r.json()).then(setHex) } },[res])
++
+   return <div>
+-    <h2>Urban KPI Board</h2>
+-    <ul>
+-      <li>Fabric Index: <b>{kpi.fabric_index?.toFixed?.(1) ?? '-'}</b></li>
+-      <li>Sprawl Risk: <b>{kpi.sprawl_risk?.toFixed?.(1) ?? '-'}</b></li>
+-      <li>Harmony Score: <b>{kpi.harmony?.toFixed?.(1) ?? '-'}</b></li>
+-    </ul>
++    <h2>Fabric Analytics Dashboard</h2>
++    <div style={{display:'flex', gap:12, alignItems:'center', flexWrap:'wrap'}}>
++      <label>Metric:</label>
++      <select value={metric} onChange={e=>setMetric(e.target.value)}>
++        <option value="fabric_index">fabric_index</option>
++        {catalog.map(m=> <option key={m} value={m}>{m}</option>)}
++      </select>
++
++      <label><input type="checkbox" checked={!!hot} onChange={e=>{ if(e.target.checked){ fetch(etl+'/tools/gi_hotspots_geojson?metric='+metric).then(r=>r.json()).then(setHot)} else { setHot(null) } }} /> Hot/Cold (Gi*)</label>
++      <label><input type="checkbox" checked={!!hex} onChange={e=>{ if(e.target.checked){ fetch(etl+`/tools/h3_aggregate?res=${res}&metric=${metric}`).then(r=>r.json()).then(setHex)} else { setHex(null) } }} /> H3 Grid</label>
++      <label>H3 Res:</label>
++      <input type="number" min={4} max={12} value={res} onChange={e=>setRes(parseInt(e.target.value||'8'))} />
++    </div>
++
++    <div style={{height:'75vh', marginTop:8}}>
++      <MapContainer center={[24.7136,46.6753]} zoom={10} style={{height:'100%'}}>
++        <TileLayer url='https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png' />
++        {fc && <GeoJSON data={fc} style={(f:any)=>({color:'#333',weight:1,fillOpacity:.45, fillColor:'#aaa'})} />}
++        {hot && <GeoJSON data={hot} style={(f:any)=>{
++          const cls = f?.properties?.class
++          return {color: cls==='hot'?'#b30000':(cls==='cold'?'#0050b3':'#999'), weight:1, fillOpacity:.45,
++                  fillColor: cls==='hot'?'#ff4d4f':(cls==='cold'?'#69c0ff':'#d9d9d9')}
++        }} />}
++        {hex && <GeoJSON data={hex} style={(f:any)=>({color:'#333',weight:1,fillOpacity:.35, fillColor:'#7cb305'})} />}
++      </MapContainer>
++    </div>
+   </div>
+ }
+--- a/services/etl/requirements.txt
++++ b/services/etl/requirements.txt
+@@ -1,4 +1,3 @@
+-
+ fastapi==0.111.0
+ uvicorn==0.30.1
+ pydantic==2.8.2
+@@ -9,3 +8,5 @@
+ psycopg[binary]==3.2.1
+ requests==2.32.3
+ prometheus-client==0.20.0
++
++h3
+--- a/services/etl/tools/registry_100.py
++++ b/services/etl/tools/registry_100.py
+@@ -3,6 +3,7 @@
+ from typing import List, Dict, Any
+ import numpy as np, json, math, os
+ import psycopg
++import h3
+ 
+ router = APIRouter(prefix="/tools", tags=["tools"])
+ 
+@@ -250,3 +251,98 @@
+ 
+ def register(app):
+     app.include_router(router)
++
++
++@router.get("/gi_hotspots_geojson")
++def gi_hotspots_geojson(metric: str = "fabric_index"):
++    """Return GeoJSON with Gi* z-scores and class (hot/cold/not_sig)."""
++    import json as _json, numpy as _np, math as _math
++    with _db() as conn:
++        rows = conn.execute("""
++            SELECT uc.id, ST_AsGeoJSON(uc.geom) AS gj,
++                   fi.efficiency, fi.resilience, fi.connectivity
++            FROM urban_cells uc
++            LEFT JOIN fabric_indicators fi ON fi.cell_id = uc.id
++            ORDER BY uc.id
++        """).fetchall()
++        nbors = conn.execute("""
++            SELECT a.id AS src, b.id AS dst
++            FROM urban_cells a
++            JOIN urban_cells b ON a.id < b.id AND ST_Touches(a.geom, b.geom)
++        """).fetchall()
++
++    ids, geoms, vals = [], [], []
++    for (cid, gj, eff, res, con) in rows:
++        eff, res, con = float(eff or 0.6), float(res or 0.6), float(con or 0.6)
++        if metric in ("fabric_index","fabric"):
++            v = 0.4*eff + 0.3*res + 0.3*con
++        elif metric == "connectivity":
++            v = con
++        elif metric == "efficiency":
++            v = eff
++        elif metric == "resilience":
++            v = res
++        else:
++            v = (eff+res+con)/3.0
++        ids.append(int(cid)); geoms.append(gj); vals.append(float(v))
++
++    idx = {cid:i for i,cid in enumerate(ids)}
++    neighbors = [[] for _ in ids]
++    for (s,d) in nbors:
++        i, j = idx[int(s)], idx[int(d)]
++        neighbors[i].append(j); neighbors[j].append(i)
++
++    x = _np.array(vals, dtype=float); mean = float(_np.mean(x)); sd = float(_np.std(x)+1e-12)
++    zscores = []
++    for i, nbrs in enumerate(neighbors):
++        wi = len(nbrs)+1
++        s = x[i] + _np.sum(x[nbrs]) if nbrs else x[i]
++        z = (s - mean*wi) / (sd * (wi**0.5))
++        zscores.append(float(z))
++
++    feats=[]
++    for (cid, gj, z) in zip(ids, geoms, zscores):
++        cls = "hot" if z>=1.96 else ("cold" if z<=-1.96 else "not_sig")
++        feats.append({
++          "type":"Feature",
++          "properties":{"id":cid,"z":z,"class":cls},
++          "geometry": _json.loads(gj) if gj else None
++        })
++    return {"type":"FeatureCollection","features":feats}
++
++
++@router.get("/h3_aggregate")
++def h3_aggregate(res: int = 8, metric: str = "fabric_index"):
++    """Aggregate cell metric to H3 hexagons (average)."""
++    import json as _json
++    with _db() as conn:
++        rows = conn.execute("""
++            SELECT uc.id, ST_Y(ST_Centroid(uc.geom)) AS lat,
++                   ST_X(ST_Centroid(uc.geom)) AS lon,
++                   fi.efficiency, fi.resilience, fi.connectivity
++            FROM urban_cells uc
++            LEFT JOIN fabric_indicators fi ON fi.cell_id = uc.id
++        """).fetchall()
++
++    data=[]
++    for (cid, lat, lon, eff, resi, con) in rows:
++        eff, resi, con = float(eff or 0.6), float(resi or 0.6), float(con or 0.6)
++        if metric in ("fabric_index","fabric"): v = 0.4*eff + 0.3*resi + 0.3*con
++        elif metric=="connectivity": v = con
++        elif metric=="efficiency": v = eff
++        elif metric=="resilience": v = resi
++        else: v = (eff+resi+con)/3.0
++        data.append((float(lat), float(lon), float(v)))
++
++    agg = {}
++    for (lat, lon, v) in data:
++        h = h3.geo_to_h3(lat, lon, int(res))
++        s = agg.get(h, {"sum":0.0,"n":0}); s["sum"] += v; s["n"] += 1; agg[h]=s
++
++    feats=[]
++    for h, s in agg.items():
++        avg = s["sum"]/max(1,s["n"])
++        boundary = h3.h3_to_geo_boundary(h, geo_json=True)
++        geom = {"type":"Polygon", "coordinates":[boundary+[boundary[0]]]}  # close ring
++        feats.append({"type":"Feature","properties":{"h3":h,"value":avg,"n":s["n"]},"geometry":geom})
++    return {"type":"FeatureCollection","features":feats}
+--- a/grafana/provisioning/datasources/postgres.yml
++++ b/grafana/provisioning/datasources/postgres.yml
+@@ -0,0 +1,13 @@
++
++apiVersion: 1
++datasources:
++  - name: Postgres
++    type: postgres
++    access: proxy
++    url: db:5432
++    user: ${POSTGRES_USER}
++    secureJsonData:
++      password: ${POSTGRES_PASSWORD}
++    jsonData:
++      database: ${POSTGRES_DB}
++      sslmode: disable
+--- a/grafana/provisioning/dashboards/fabric_city.json
++++ b/grafana/provisioning/dashboards/fabric_city.json
+@@ -0,0 +1,98 @@
++{
++  "annotations": {
++    "list": []
++  },
++  "editable": true,
++  "gnetId": null,
++  "graphTooltip": 0,
++  "panels": [
++    {
++      "type": "table",
++      "title": "Avg Fabric Index by City",
++      "datasource": "Postgres",
++      "targets": [
++        {
++          "format": "table",
++          "rawSql": "SELECT city, ROUND(100.0*AVG(0.4*efficiency + 0.3*resilience + 0.3*connectivity),1) AS fabric_index\nFROM urban_cells uc JOIN fabric_indicators fi ON fi.cell_id=uc.id\nGROUP BY city ORDER BY fabric_index DESC;",
++          "refId": "A"
++        }
++      ],
++      "gridPos": {
++        "h": 9,
++        "w": 12,
++        "x": 0,
++        "y": 0
++      }
++    },
++    {
++      "type": "table",
++      "title": "Hotspots (Gi* Z \u2265 1.96) per City",
++      "datasource": "Postgres",
++      "targets": [
++        {
++          "format": "table",
++          "rawSql": "-- requires a materialized table gi_hotspots(city, z)\nSELECT city, COUNT(*) AS hotspots FROM gi_hotspots WHERE z >= 1.96 GROUP BY city ORDER BY hotspots DESC;",
++          "refId": "B"
++        }
++      ],
++      "gridPos": {
++        "h": 9,
++        "w": 12,
++        "x": 12,
++        "y": 0
++      }
++    },
++    {
++      "type": "table",
++      "title": "Coldspots (Gi* Z \u2264 -1.96) per City",
++      "datasource": "Postgres",
++      "targets": [
++        {
++          "format": "table",
++          "rawSql": "SELECT city, COUNT(*) AS coldspots FROM gi_hotspots WHERE z <= -1.96 GROUP BY city ORDER BY coldspots DESC;",
++          "refId": "C"
++        }
++      ],
++      "gridPos": {
++        "h": 9,
++        "w": 12,
++        "x": 0,
++        "y": 9
++      }
++    },
++    {
++      "type": "table",
++      "title": "15-min Access Coverage (sample)",
++      "datasource": "Postgres",
++      "targets": [
++        {
++          "format": "table",
++          "rawSql": "SELECT city, 100.0*SUM(CASE WHEN access_15min THEN 1 ELSE 0 END)/COUNT(*) AS pct\nFROM urban_cells GROUP BY city ORDER BY pct DESC;",
++          "refId": "D"
++        }
++      ],
++      "gridPos": {
++        "h": 9,
++        "w": 12,
++        "x": 12,
++        "y": 9
++      }
++    }
++  ],
++  "schemaVersion": 39,
++  "style": "dark",
++  "tags": [
++    "NASIJ",
++    "Fabric"
++  ],
++  "templating": {
++    "list": []
++  },
++  "time": {
++    "from": "now-30d",
++    "to": "now"
++  },
++  "timezone": "browser",
++  "title": "NASIJ \u2014 Fabric City KPIs",
++  "version": 1
++}--- a/scripts/osrm_batch.sh
++++ b/scripts/osrm_batch.sh
+@@ -0,0 +1,25 @@
++
++#!/usr/bin/env bash
++set -euo pipefail
++DATA="${DATA_DIR:-./data/osrm}"
++mkdir -p "$DATA"
++BASE_PBF="$DATA/saudi-arabia-latest.osm.pbf"
++
++if [ ! -f "$BASE_PBF" ]; then
++  curl -L -o "$BASE_PBF" https://download.geofabrik.de/asia/saudi-arabia-latest.osm.pbf
++fi
++
++declare -A BBOX
++BBOX["riyadh"]="46.38,24.33,47.10,25.10"
++BBOX["jeddah"]="39.05,21.20,39.35,21.70"
++BBOX["dammam"]="49.95,26.20,50.20,26.55"
++
++for CITY in "${!BBOX[@]}"; do
++  BB="${BBOX[$CITY]}"
++  echo "==> Extract $CITY"
++  docker run --rm -v "${PWD}/$DATA:/data" osmcode/osmium osmium extract -b "$BB" /data/saudi-arabia-latest.osm.pbf -o /data/$CITY.osm.pbf
++  docker run --rm -v "${PWD}/$DATA:/data" ghcr.io/project-osrm/osrm-backend:v5.27.1 osrm-extract -p /opt/car.lua /data/$CITY.osm.pbf
++  docker run --rm -v "${PWD}/$DATA:/data" ghcr.io/project-osrm/osrm-backend:v5.27.1 osrm-partition /data/$CITY.osrm
++  docker run --rm -v "${PWD}/$DATA:/data" ghcr.io/project-osrm/osrm-backend:v5.27.1 osrm-customize /data/$CITY.osrm
++  echo "Built OSRM data for $CITY at $DATA/$CITY.osrm"
++done

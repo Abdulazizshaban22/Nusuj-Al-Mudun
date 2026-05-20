@@ -1,0 +1,92 @@
+
+version: "3.9"
+services:
+  db:
+    image: postgis/postgis:15-3.4
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    ports: ["5432:5432"]
+    volumes: [ "db_data:/var/lib/postgresql/data", "./sql:/sql" ]
+
+  pg_tileserv:
+    image: pramsey/pg_tileserv:latest
+    environment: { DATABASE_URL: ${DATABASE_URL} }
+    depends_on: [db]
+    ports: ["7800:7800"]
+
+  osrm:
+    image: peterevans/osrm-backend:latest
+    environment: { OSRM_PBF_URL: ${OSRM_PBF_URL} }
+    ports: ["5000:5000"]
+
+  etl:
+    build: ../services/etl
+    environment: { DATABASE_URL: ${DATABASE_URL}, OSRM_BASE_URL: ${OSRM_BASE_URL} }
+    depends_on: [db, osrm]
+    ports: ["9101:9101"]
+
+  api:
+    build: ../services/api
+    environment: { DATABASE_URL: ${DATABASE_URL} }
+    depends_on: [db]
+    ports: ["8088:8088"]
+
+  web:
+    build: ../apps/web
+    environment:
+      NEXT_PUBLIC_API_BASE: ${NEXT_PUBLIC_API_BASE}
+      NEXT_PUBLIC_ETL_BASE: ${NEXT_PUBLIC_ETL_BASE}
+    depends_on: [api, etl, pg_tileserv]
+    ports: ["3000:3000"]
+
+  mosquitto:
+    image: eclipse-mosquitto:2
+    ports: ["1883:1883"]
+    volumes: [ "./mosquitto:/mosquitto" ]
+
+  iot-listener:
+    build: ../services/iot
+    environment:
+      MQTT_URL: mosquitto
+      MQTT_PORT: 1883
+      MQTT_USERNAME: ${MQTT_USERNAME}
+      MQTT_PASSWORD: ${MQTT_PASSWORD}
+      DATABASE_URL: ${DATABASE_URL}
+    depends_on: [mosquitto, db]
+    ports: ["9200:9200"]
+
+  grafana:
+    image: grafana/grafana:11.2.0
+    ports: ["3001:3000"]
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning
+      - ./grafana/dashboards:/var/lib/grafana/dashboards
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_PATHS_PROVISIONING=/etc/grafana/provisioning
+    depends_on: [etl]
+
+  prometheus:
+    image: prom/prometheus:latest
+    ports: ["9090:9090"]
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.0.0
+    command: start-dev
+    environment:
+      - KEYCLOAK_ADMIN=admin
+      - KEYCLOAK_ADMIN_PASSWORD=admin
+    ports: ["8081:8080"]
+
+  caddy:
+    image: caddy:2
+    ports: ["80:80","443:443"]
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+
+volumes: { db_data: {} }

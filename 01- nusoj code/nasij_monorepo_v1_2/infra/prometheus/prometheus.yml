@@ -1,0 +1,4 @@
+global: { scrape_interval: 15s }
+scrape_configs:
+  - job_name: 'nasij-etl'
+    static_configs: [{ targets: ['etl:9101'] }]

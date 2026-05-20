@@ -1,0 +1,11 @@
+
+<RevitAddIns>
+  <AddIn Type="Command">
+    <Name>NASIJ Sync</Name>
+    <Assembly>C:\NASIJ\Nasij.Revit.dll</Assembly>
+    <AddInId>8D83FBE5-F5A1-4F2A-9B40-1A2B3C4D5E6F</AddInId>
+    <FullClassName>Nasij.Revit.Commands.PushSelection</FullClassName>
+    <VendorId>NASJ</VendorId>
+    <VendorDescription>NASIJ Urban Fabric</VendorDescription>
+  </AddIn>
+</RevitAddIns>

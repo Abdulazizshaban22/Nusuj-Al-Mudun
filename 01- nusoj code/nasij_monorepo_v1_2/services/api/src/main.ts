@@ -1,0 +1,1 @@
+import 'reflect-metadata'; import { NestFactory } from '@nestjs/core'; import { AppModule } from './app.module'; async function b(){const a=await NestFactory.create(AppModule);a.enableCors();await a.listen(8088);console.log('NASIJ API on :8088')} b()

@@ -1,0 +1,27 @@
+{
+  "stac_version": "1.0.0",
+  "type": "Collection",
+  "id": "urban-indicators",
+  "description": "Urban indicators rasters",
+  "extent": {
+    "spatial": {
+      "bbox": [
+        [
+          35,
+          16,
+          55,
+          33
+        ]
+      ]
+    },
+    "temporal": {
+      "interval": [
+        [
+          "2020-01-01T00:00:00Z",
+          null
+        ]
+      ]
+    }
+  },
+  "license": "proprietary"
+}

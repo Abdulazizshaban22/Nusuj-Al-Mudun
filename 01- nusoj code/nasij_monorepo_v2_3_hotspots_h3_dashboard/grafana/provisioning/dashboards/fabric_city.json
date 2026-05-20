@@ -1,0 +1,98 @@
+{
+  "annotations": {
+    "list": []
+  },
+  "editable": true,
+  "gnetId": null,
+  "graphTooltip": 0,
+  "panels": [
+    {
+      "type": "table",
+      "title": "Avg Fabric Index by City",
+      "datasource": "Postgres",
+      "targets": [
+        {
+          "format": "table",
+          "rawSql": "SELECT city, ROUND(100.0*AVG(0.4*efficiency + 0.3*resilience + 0.3*connectivity),1) AS fabric_index\nFROM urban_cells uc JOIN fabric_indicators fi ON fi.cell_id=uc.id\nGROUP BY city ORDER BY fabric_index DESC;",
+          "refId": "A"
+        }
+      ],
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 0,
+        "y": 0
+      }
+    },
+    {
+      "type": "table",
+      "title": "Hotspots (Gi* Z \u2265 1.96) per City",
+      "datasource": "Postgres",
+      "targets": [
+        {
+          "format": "table",
+          "rawSql": "-- requires a materialized table gi_hotspots(city, z)\nSELECT city, COUNT(*) AS hotspots FROM gi_hotspots WHERE z >= 1.96 GROUP BY city ORDER BY hotspots DESC;",
+          "refId": "B"
+        }
+      ],
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 12,
+        "y": 0
+      }
+    },
+    {
+      "type": "table",
+      "title": "Coldspots (Gi* Z \u2264 -1.96) per City",
+      "datasource": "Postgres",
+      "targets": [
+        {
+          "format": "table",
+          "rawSql": "SELECT city, COUNT(*) AS coldspots FROM gi_hotspots WHERE z <= -1.96 GROUP BY city ORDER BY coldspots DESC;",
+          "refId": "C"
+        }
+      ],
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 0,
+        "y": 9
+      }
+    },
+    {
+      "type": "table",
+      "title": "15-min Access Coverage (sample)",
+      "datasource": "Postgres",
+      "targets": [
+        {
+          "format": "table",
+          "rawSql": "SELECT city, 100.0*SUM(CASE WHEN access_15min THEN 1 ELSE 0 END)/COUNT(*) AS pct\nFROM urban_cells GROUP BY city ORDER BY pct DESC;",
+          "refId": "D"
+        }
+      ],
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 12,
+        "y": 9
+      }
+    }
+  ],
+  "schemaVersion": 39,
+  "style": "dark",
+  "tags": [
+    "NASIJ",
+    "Fabric"
+  ],
+  "templating": {
+    "list": []
+  },
+  "time": {
+    "from": "now-30d",
+    "to": "now"
+  },
+  "timezone": "browser",
+  "title": "NASIJ \u2014 Fabric City KPIs",
+  "version": 1
+}

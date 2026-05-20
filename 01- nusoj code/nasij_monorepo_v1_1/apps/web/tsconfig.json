@@ -1,0 +1,15 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": [
+      "ES2022",
+      "DOM"
+    ],
+    "jsx": "preserve",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "types": [
+      "node"
+    ]
+  }
+}
